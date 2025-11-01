@@ -382,10 +382,12 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
   const [newUserGroup, setNewUserGroup] = useState({
     name: '',
     enabledApis: [] as string[],
+    showAdultContent: false,
   });
   const [editingUserGroup, setEditingUserGroup] = useState<{
     name: string;
     enabledApis: string[];
+    showAdultContent?: boolean;
   } | null>(null);
   const [showConfigureApisModal, setShowConfigureApisModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState<{
@@ -393,8 +395,10 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
     role: 'user' | 'admin' | 'owner';
     enabledApis?: string[];
     tags?: string[];
+    showAdultContent?: boolean;
   } | null>(null);
   const [selectedApis, setSelectedApis] = useState<string[]>([]);
+  const [selectedShowAdultContent, setSelectedShowAdultContent] = useState<boolean>(false);
   const [showConfigureUserGroupModal, setShowConfigureUserGroupModal] = useState(false);
   const [selectedUserForGroup, setSelectedUserForGroup] = useState<{
     username: string;
@@ -443,7 +447,8 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
   const handleUserGroupAction = async (
     action: 'add' | 'edit' | 'delete',
     groupName: string,
-    enabledApis?: string[]
+    enabledApis?: string[],
+    showAdultContent?: boolean
   ) => {
     return withLoading(`userGroup_${action}_${groupName}`, async () => {
       try {
@@ -455,6 +460,7 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
             groupAction: action,
             groupName,
             enabledApis,
+            showAdultContent,
           }),
         });
 
@@ -466,7 +472,7 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
         await refreshConfig();
 
         if (action === 'add') {
-          setNewUserGroup({ name: '', enabledApis: [] });
+          setNewUserGroup({ name: '', enabledApis: [], showAdultContent: false });
           setShowAddUserGroupForm(false);
         } else if (action === 'edit') {
           setEditingUserGroup(null);
@@ -483,12 +489,12 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
 
   const handleAddUserGroup = () => {
     if (!newUserGroup.name.trim()) return;
-    handleUserGroupAction('add', newUserGroup.name, newUserGroup.enabledApis);
+    handleUserGroupAction('add', newUserGroup.name, newUserGroup.enabledApis, newUserGroup.showAdultContent);
   };
 
   const handleEditUserGroup = () => {
     if (!editingUserGroup?.name.trim()) return;
-    handleUserGroupAction('edit', editingUserGroup.name, editingUserGroup.enabledApis);
+    handleUserGroupAction('edit', editingUserGroup.name, editingUserGroup.enabledApis, editingUserGroup.showAdultContent);
   };
 
   const handleDeleteUserGroup = (groupName: string) => {
@@ -603,9 +609,11 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
     username: string;
     role: 'user' | 'admin' | 'owner';
     enabledApis?: string[];
+    showAdultContent?: boolean;
   }) => {
     setSelectedUser(user);
     setSelectedApis(user.enabledApis || []);
+    setSelectedShowAdultContent(user.showAdultContent || false);
     setShowConfigureApisModal(true);
   };
 
@@ -723,6 +731,7 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
             targetUsername: selectedUser.username,
             action: 'updateUserApis',
             enabledApis: selectedApis,
+            showAdultContent: selectedShowAdultContent,
           }),
         });
 
@@ -736,6 +745,7 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
         setShowConfigureApisModal(false);
         setSelectedUser(null);
         setSelectedApis([]);
+        setSelectedShowAdultContent(false);
       } catch (err) {
         showError(err instanceof Error ? err.message : '操作失败', showAlert);
         throw err;
@@ -1562,6 +1572,7 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
           setShowConfigureApisModal(false);
           setSelectedUser(null);
           setSelectedApis([]);
+          setSelectedShowAdultContent(false);
         }}>
           <div className='bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-4xl w-full max-h-[80vh] overflow-y-auto' onClick={(e) => e.stopPropagation()}>
             <div className='p-6'>
@@ -1574,6 +1585,7 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
                     setShowConfigureApisModal(false);
                     setSelectedUser(null);
                     setSelectedApis([]);
+                    setSelectedShowAdultContent(false);
                   }}
                   className='text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors'
                 >
@@ -1660,6 +1672,32 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
                 </div>
               </div>
 
+              {/* 成人内容控制 */}
+              <div className='mb-6 p-4 bg-gradient-to-r from-red-50 to-pink-50 dark:from-red-900/20 dark:to-pink-900/20 rounded-lg border border-red-200 dark:border-red-800'>
+                <label className='flex items-center justify-between cursor-pointer'>
+                  <div className='flex-1'>
+                    <div className='flex items-center space-x-2'>
+                      <span className='text-base font-medium text-gray-900 dark:text-gray-100'>
+                        显示成人内容
+                      </span>
+                      <span className='text-lg'>🔞</span>
+                    </div>
+                    <p className='text-sm text-gray-600 dark:text-gray-400 mt-1'>
+                      允许此用户查看被标记为成人资源的视频源（需要同时启用站点级别和用户组级别的成人内容开关，优先级：用户 &gt; 用户组 &gt; 全局）
+                    </p>
+                  </div>
+                  <div className='relative inline-block ml-4'>
+                    <input
+                      type='checkbox'
+                      checked={selectedShowAdultContent}
+                      onChange={(e) => setSelectedShowAdultContent(e.target.checked)}
+                      className='sr-only peer'
+                    />
+                    <div className='w-14 h-7 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-red-300 dark:peer-focus:ring-red-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[""] after:absolute after:top-0.5 after:start-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all dark:border-gray-600 peer-checked:bg-gradient-to-r peer-checked:from-red-600 peer-checked:to-pink-600'></div>
+                  </div>
+                </label>
+              </div>
+
               {/* 操作按钮 */}
               <div className='flex justify-end space-x-3'>
                 <button
@@ -1667,6 +1705,7 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
                     setShowConfigureApisModal(false);
                     setSelectedUser(null);
                     setSelectedApis([]);
+                    setSelectedShowAdultContent(false);
                   }}
                   className={`px-6 py-2.5 text-sm font-medium ${buttonStyles.secondary}`}
                 >
@@ -1690,7 +1729,7 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
       {showAddUserGroupForm && createPortal(
         <div className='fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4' onClick={() => {
           setShowAddUserGroupForm(false);
-          setNewUserGroup({ name: '', enabledApis: [] });
+          setNewUserGroup({ name: '', enabledApis: [], showAdultContent: false });
         }}>
           <div className='bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-4xl w-full max-h-[80vh] overflow-y-auto' onClick={(e) => e.stopPropagation()}>
             <div className='p-6'>
@@ -1701,7 +1740,7 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
                 <button
                   onClick={() => {
                     setShowAddUserGroupForm(false);
-                    setNewUserGroup({ name: '', enabledApis: [] });
+                    setNewUserGroup({ name: '', enabledApis: [], showAdultContent: false });
                   }}
                   className='text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors'
                 >
@@ -1857,12 +1896,43 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
                   </div>
                 </div>
 
+                {/* 成人内容控制 */}
+                <div className='p-4 bg-gradient-to-r from-red-50 to-pink-50 dark:from-red-900/20 dark:to-pink-900/20 rounded-lg border border-red-200 dark:border-red-800'>
+                  <label className='flex items-center justify-between cursor-pointer'>
+                    <div className='flex-1'>
+                      <div className='flex items-center space-x-2'>
+                        <span className='text-base font-medium text-gray-900 dark:text-gray-100'>
+                          显示成人内容
+                        </span>
+                        <span className='text-lg'>🔞</span>
+                      </div>
+                      <p className='text-sm text-gray-600 dark:text-gray-400 mt-1'>
+                        允许此用户组查看被标记为成人资源的视频源（需要同时启用站点级别的成人内容开关）
+                      </p>
+                    </div>
+                    <div className='relative inline-block ml-4'>
+                      <input
+                        type='checkbox'
+                        checked={newUserGroup.showAdultContent}
+                        onChange={(e) =>
+                          setNewUserGroup((prev) => ({
+                            ...prev,
+                            showAdultContent: e.target.checked,
+                          }))
+                        }
+                        className='sr-only peer'
+                      />
+                      <div className='w-14 h-7 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-red-300 dark:peer-focus:ring-red-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[""] after:absolute after:top-0.5 after:start-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all dark:border-gray-600 peer-checked:bg-gradient-to-r peer-checked:from-red-600 peer-checked:to-pink-600'></div>
+                    </div>
+                  </label>
+                </div>
+
                 {/* 操作按钮 */}
                 <div className='flex justify-end space-x-3 pt-4 border-t border-gray-200 dark:border-gray-700'>
                   <button
                     onClick={() => {
                       setShowAddUserGroupForm(false);
-                      setNewUserGroup({ name: '', enabledApis: [] });
+                      setNewUserGroup({ name: '', enabledApis: [], showAdultContent: false });
                     }}
                     className={`px-6 py-2.5 text-sm font-medium ${buttonStyles.secondary}`}
                   >
@@ -2036,6 +2106,37 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
                       全选
                     </button>
                   </div>
+                </div>
+
+                {/* 成人内容控制 */}
+                <div className='p-4 bg-gradient-to-r from-red-50 to-pink-50 dark:from-red-900/20 dark:to-pink-900/20 rounded-lg border border-red-200 dark:border-red-800'>
+                  <label className='flex items-center justify-between cursor-pointer'>
+                    <div className='flex-1'>
+                      <div className='flex items-center space-x-2'>
+                        <span className='text-base font-medium text-gray-900 dark:text-gray-100'>
+                          显示成人内容
+                        </span>
+                        <span className='text-lg'>🔞</span>
+                      </div>
+                      <p className='text-sm text-gray-600 dark:text-gray-400 mt-1'>
+                        允许此用户组查看被标记为成人资源的视频源（需要同时启用站点级别的成人内容开关）
+                      </p>
+                    </div>
+                    <div className='relative inline-block ml-4'>
+                      <input
+                        type='checkbox'
+                        checked={editingUserGroup?.showAdultContent || false}
+                        onChange={(e) =>
+                          setEditingUserGroup((prev) => prev ? ({
+                            ...prev,
+                            showAdultContent: e.target.checked,
+                          }) : null)
+                        }
+                        className='sr-only peer'
+                      />
+                      <div className='w-14 h-7 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-red-300 dark:peer-focus:ring-red-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[""] after:absolute after:top-0.5 after:start-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all dark:border-gray-600 peer-checked:bg-gradient-to-r peer-checked:from-red-600 peer-checked:to-pink-600'></div>
+                    </div>
+                  </label>
                 </div>
 
                 {/* 操作按钮 */}
@@ -2609,14 +2710,16 @@ const VideoSourceConfig = ({
       showAlert({
         type: 'success',
         title: '操作成功',
-        message: `${markAsAdult ? '标记' : '取消标记'}成功！共处理 ${keys.length} 个视频源`
+        message: `${markAsAdult ? '标记' : '取消标记'}成功！共处理 ${keys.length} 个视频源`,
+        timer: 2000
       });
       setSelectedSources(new Set());
     } catch {
       showAlert({
         type: 'error',
         title: '操作失败',
-        message: `${markAsAdult ? '标记' : '取消标记'}失败，请重试`
+        message: `${markAsAdult ? '标记' : '取消标记'}失败，请重试`,
+        showConfirm: true
       });
     }
   };
@@ -2993,7 +3096,7 @@ const VideoSourceConfig = ({
   };
 
   // 导出视频源
-  const handleExportSources = () => {
+  const handleExportSources = (exportFormat: 'array' | 'config' = 'array') => {
     try {
       // 获取要导出的源（如果有选中则导出选中的，否则导出全部）
       const sourcesToExport =
@@ -3010,20 +3113,41 @@ const VideoSourceConfig = ({
         return;
       }
 
-      // 创建导出数据
-      const exportData = sourcesToExport.map((source) => ({
-        name: source.name,
-        key: source.key,
-        api: source.api,
-        detail: source.detail || '',
-        disabled: source.disabled || false,
-        is_adult: source.is_adult || false,
-      }));
-
-      // 生成文件名
+      let exportData: any;
+      let filename: string;
       const now = new Date();
       const timestamp = now.toISOString().replace(/[:.]/g, '-').slice(0, 19);
-      const filename = `video_sources_${timestamp}.json`;
+
+      if (exportFormat === 'array') {
+        // 数组格式：[{name, key, api, detail, disabled, is_adult}]
+        exportData = sourcesToExport.map((source) => ({
+          name: source.name,
+          key: source.key,
+          api: source.api,
+          detail: source.detail || '',
+          disabled: source.disabled || false,
+          is_adult: source.is_adult || false,
+        }));
+        filename = `video_sources_${timestamp}.json`;
+      } else {
+        // 配置文件格式：{"api_site": {"key": {name, api, detail?, is_adult?}}}
+        exportData = { api_site: {} };
+        sourcesToExport.forEach((source) => {
+          const sourceData: any = {
+            name: source.name,
+            api: source.api,
+          };
+          // 只在有值时添加可选字段
+          if (source.detail) {
+            sourceData.detail = source.detail;
+          }
+          if (source.is_adult) {
+            sourceData.is_adult = source.is_adult;
+          }
+          exportData.api_site[source.key] = sourceData;
+        });
+        filename = `config_${timestamp}.json`;
+      }
 
       // 创建下载
       const blob = new Blob([JSON.stringify(exportData, null, 2)], {
@@ -3041,7 +3165,7 @@ const VideoSourceConfig = ({
       showAlert({
         type: 'success',
         title: '导出成功',
-        message: `已导出 ${sourcesToExport.length} 个视频源到 ${filename}`,
+        message: `已导出 ${sourcesToExport.length} 个视频源到 ${filename}（${exportFormat === 'array' ? '数组格式' : '配置文件格式'}）`,
         timer: 3000,
       });
 
@@ -5724,7 +5848,7 @@ function AdminPageClient() {
   if (loading) {
     return (
       <PageLayout activePath='/admin'>
-        <div className='px-2 sm:px-10 py-4 sm:py-8'>
+        <div className='-mt-6 md:mt-0'>
           <div className='max-w-[95%] mx-auto'>
             <h1 className='text-2xl font-bold text-gray-900 dark:text-gray-100 mb-8'>
               管理员设置
@@ -5752,7 +5876,7 @@ function AdminPageClient() {
 
   return (
     <PageLayout activePath='/admin'>
-      <div className='px-2 sm:px-10 py-4 sm:py-8'>
+      <div className='-mt-6 md:mt-0'>
         <div className='max-w-[95%] mx-auto'>
           {/* 标题 + 重置配置按钮 */}
           <div className='flex items-center gap-2 mb-8'>
