@@ -51,6 +51,9 @@ const WatchRoomConfig = ({ config, refreshConfig }: WatchRoomConfigProps) => {
     }
   }, [config]);
 
+  // 保存的配置（用于自动刷新统计）
+  const savedConfig = config?.WatchRoomConfig;
+
   // 显示消息
   const showMessage = (type: 'success' | 'error', text: string) => {
     setMessage({ type, text });
@@ -161,8 +164,12 @@ const WatchRoomConfig = ({ config, refreshConfig }: WatchRoomConfigProps) => {
   };
 
   // 获取服务器统计信息
-  const fetchStats = async () => {
-    if (!settings.enabled || !settings.serverUrl) {
+  // useSaved=true: 使用已保存的配置（用于自动刷新）
+  // useSaved=false: 使用当前输入的配置（用于手动刷新测试）
+  const fetchStats = async (useSaved = false) => {
+    const configToUse = useSaved ? savedConfig : settings;
+
+    if (!configToUse || !configToUse.enabled || !configToUse.serverUrl) {
       return;
     }
 
@@ -174,8 +181,8 @@ const WatchRoomConfig = ({ config, refreshConfig }: WatchRoomConfigProps) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          serverUrl: settings.serverUrl.trim(),
-          authKey: settings.authKey.trim(),
+          serverUrl: configToUse.serverUrl.trim(),
+          authKey: configToUse.authKey.trim(),
         }),
       });
       const result = await response.json();
@@ -193,21 +200,21 @@ const WatchRoomConfig = ({ config, refreshConfig }: WatchRoomConfigProps) => {
     }
   };
 
-  // 启用状态改变时自动获取统计信息
+  // 基于已保存的配置自动获取统计信息（不会因为用户输入而触发）
   useEffect(() => {
-    if (settings.enabled && settings.serverUrl && settings.authKey) {
-      fetchStats();
+    if (savedConfig?.enabled && savedConfig.serverUrl && savedConfig.authKey) {
+      fetchStats(true); // 使用已保存的配置
       // 每30秒自动刷新
-      const interval = setInterval(fetchStats, 30000);
+      const interval = setInterval(() => fetchStats(true), 30000);
       return () => clearInterval(interval);
     }
-  }, [settings.enabled, settings.serverUrl, settings.authKey]);
+  }, [savedConfig?.enabled, savedConfig?.serverUrl, savedConfig?.authKey]);
 
   return (
     <div className='space-y-6'>
       {/* 标题和说明 */}
       <div className='flex items-start gap-3'>
-        <Users className='w-6 h-6 text-indigo-500 flex-shrink-0 mt-1' />
+        <Users className='w-6 h-6 text-indigo-500 shrink-0 mt-1' />
         <div className='flex-1'>
           <h3 className='text-lg font-semibold text-gray-900 dark:text-gray-100'>
             观影室配置
@@ -221,7 +228,7 @@ const WatchRoomConfig = ({ config, refreshConfig }: WatchRoomConfigProps) => {
       {/* 信息提示 */}
       <div className='bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4'>
         <div className='flex items-start gap-3'>
-          <Info className='w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5' />
+          <Info className='w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5' />
           <div className='text-sm text-blue-800 dark:text-blue-200'>
             <p className='font-medium mb-2'>关于观影室服务器：</p>
             <ul className='space-y-1 list-disc list-inside'>
@@ -232,7 +239,7 @@ const WatchRoomConfig = ({ config, refreshConfig }: WatchRoomConfigProps) => {
               <li>建议使用随机生成的强密码作为 AUTH_KEY</li>
             </ul>
             <a
-              href='https://github.com/tgs9915/watch-room-server'
+              href='https://github.com/SzeMeng76/watch-room-server'
               target='_blank'
               rel='noopener noreferrer'
               className='inline-flex items-center gap-1 mt-2 text-blue-600 dark:text-blue-400 hover:underline'
@@ -246,7 +253,7 @@ const WatchRoomConfig = ({ config, refreshConfig }: WatchRoomConfigProps) => {
       {/* 多站点共享警告 */}
       <div className='bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4'>
         <div className='flex items-start gap-3'>
-          <AlertCircle className='w-5 h-5 text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5' />
+          <AlertCircle className='w-5 h-5 text-yellow-600 dark:text-yellow-400 shrink-0 mt-0.5' />
           <div className='text-sm text-yellow-800 dark:text-yellow-200'>
             <p className='font-medium mb-2'>⚠️ 重要提示：多站点共享</p>
             <ul className='space-y-1 list-disc list-inside'>
@@ -328,9 +335,9 @@ const WatchRoomConfig = ({ config, refreshConfig }: WatchRoomConfigProps) => {
                 : 'bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 border border-red-200 dark:border-red-800'
             }`}>
               {testResult.success ? (
-                <CheckCircle className='w-5 h-5 flex-shrink-0' />
+                <CheckCircle className='w-5 h-5 shrink-0' />
               ) : (
-                <AlertCircle className='w-5 h-5 flex-shrink-0' />
+                <AlertCircle className='w-5 h-5 shrink-0' />
               )}
               <span className='text-sm'>{testResult.message}</span>
             </div>
@@ -346,9 +353,9 @@ const WatchRoomConfig = ({ config, refreshConfig }: WatchRoomConfigProps) => {
             : 'bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 border border-red-200 dark:border-red-800'
         }`}>
           {message.type === 'success' ? (
-            <CheckCircle className='w-5 h-5 flex-shrink-0' />
+            <CheckCircle className='w-5 h-5 shrink-0' />
           ) : (
-            <AlertCircle className='w-5 h-5 flex-shrink-0' />
+            <AlertCircle className='w-5 h-5 shrink-0' />
           )}
           <span className='text-sm'>{message.text}</span>
         </div>
@@ -365,7 +372,7 @@ const WatchRoomConfig = ({ config, refreshConfig }: WatchRoomConfigProps) => {
         </button>
         {settings.enabled && (
           <button
-            onClick={fetchStats}
+            onClick={() => fetchStats(false)}
             disabled={statsLoading}
             className='px-4 py-2 bg-gray-600 hover:bg-gray-700 disabled:bg-gray-400 text-white rounded-lg font-medium transition-colors'
           >
@@ -392,7 +399,7 @@ const WatchRoomConfig = ({ config, refreshConfig }: WatchRoomConfigProps) => {
           {statsError && (
             <div className='p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg'>
               <div className='flex items-start gap-2 text-red-800 dark:text-red-200'>
-                <AlertCircle className='w-5 h-5 flex-shrink-0' />
+                <AlertCircle className='w-5 h-5 shrink-0' />
                 <div className='text-sm'>
                   <p className='font-medium'>无法获取统计信息</p>
                   <p className='mt-1'>{statsError}</p>
@@ -405,7 +412,7 @@ const WatchRoomConfig = ({ config, refreshConfig }: WatchRoomConfigProps) => {
             <div className='space-y-4'>
               {/* 总览卡片 */}
               <div className='grid grid-cols-2 gap-4'>
-                <div className='bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 border border-indigo-200 dark:border-indigo-800 rounded-lg p-4'>
+                <div className='bg-linear-to-br from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 border border-indigo-200 dark:border-indigo-800 rounded-lg p-4'>
                   <div className='text-sm font-medium text-indigo-700 dark:text-indigo-300 mb-1'>
                     活跃房间数
                   </div>
@@ -413,7 +420,7 @@ const WatchRoomConfig = ({ config, refreshConfig }: WatchRoomConfigProps) => {
                     {stats.totalRooms}
                   </div>
                 </div>
-                <div className='bg-gradient-to-br from-green-50 to-teal-50 dark:from-green-900/20 dark:to-teal-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4'>
+                <div className='bg-linear-to-br from-green-50 to-teal-50 dark:from-green-900/20 dark:to-teal-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4'>
                   <div className='text-sm font-medium text-green-700 dark:text-green-300 mb-1'>
                     在线用户数
                   </div>

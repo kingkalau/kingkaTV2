@@ -32,6 +32,194 @@
 
 ---
 
+## 新增功能特性
+
+本节记录了最近新增和优化的观影室功能。
+
+### 🎯 智能播放同步
+
+**同剧集切换优化**
+- 房主切换同一部剧的不同集数时，成员无需刷新页面即可自动跟随
+- 使用 `setCurrentEpisodeIndex` 直接切换集数，保持 WebSocket 连接
+- 自动跳转到房主的播放时间点（1秒延迟确保集数加载完成）
+- 保持房间状态，避免重复加入房间
+
+**跨剧集智能跳转**
+- 房主切换到不同影片时，使用客户端路由（`router.push`）
+- 避免 `window.location.href` 导致的页面刷新和 WebSocket 断连
+- 自动携带播放时间、集数等参数，实现无缝切换
+- 成员收到弹窗提示，可选择"跟随房主"或"自由观看"
+
+**技术实现**
+```typescript
+// 同一部剧：直接切换集数
+if (isSameShow) {
+  setCurrentEpisodeIndex(state.episode);
+  setTimeout(() => artPlayer.currentTime = state.currentTime, 1000);
+}
+// 不同剧：客户端路由跳转
+else {
+  router.push(`/play?${params.toString()}`);
+}
+```
+
+### 📺 正在观看显示
+
+**房间信息面板增强**
+- 创建/加入房间后可查看当前正在观看的影片
+- 使用迷你视频卡片展示：
+  - 海报缩略图（64x96px）
+  - 影片标题
+  - 年份信息
+  - 集数信息（TV剧）
+  - 播放图标覆层
+- 点击视频卡片可直接跳转到播放页面并同步进度
+- 自动携带房主的当前播放时间，实现时间同步
+
+**房间列表增强**
+- 房间列表中展示各房间正在观看的内容
+- 完整的图片处理和占位符支持
+- 图片加载失败时显示默认占位符（SVG）
+- 点击视频卡片跳转到播放页面（不携带时间参数，因为用户尚未加入房间）
+
+**MiniVideoCard 组件**
+- 专门为观影室设计的紧凑型视频卡片
+- 响应式设计，支持深色模式
+- 悬停效果提升用户体验
+- 使用 Next.js Image 组件优化图片加载
+- `referrerPolicy="no-referrer"` 解决跨域图片问题
+
+### 🎬 集数显示优化
+
+**智能判断逻辑**
+- 根据 `totalEpisodes` 字段自动判断是否显示集数信息
+- **电影**（totalEpisodes = 1）：不显示"第1集"
+- **电视剧**（totalEpisodes > 1）：显示"第X集"
+- 避免电影显示不必要的集数信息，提升用户体验
+
+**实现细节**
+- 在整个状态链中传递 `totalEpisodes` 字段：
+  - `PlayState` 接口
+  - `OwnerPlayState` 接口
+  - 所有 Socket.IO 事件广播
+  - `MiniVideoCard` 组件
+- 从影片详情中自动提取：`detail?.episodes?.length`
+
+**显示逻辑**
+```typescript
+{totalEpisodes && totalEpisodes > 1 && episode !== undefined && (
+  <span>第 {episode + 1} 集</span>
+)}
+```
+
+### 👤 用户名识别改进
+
+**问题背景**
+- Cookie 在浏览器中异步加载，首次加载时可能未准备好
+- 导致用户加入房间时显示为"游客"而非真实用户名
+- 用户需要手动刷新页面才能显示正确用户名
+
+**解决方案：持续轮询检测**
+- 使用 `setInterval` 持续检查 Cookie 是否加载完成
+- 最多检查 20 次，每次间隔 500ms（总计 10 秒）
+- 成功获取用户名后立即停止检查
+- 达到最大次数后停止，避免无限循环
+
+**实现代码**
+```typescript
+const checkUsername = () => {
+  const authInfo = getAuthInfoFromBrowserCookie();
+  const username = authInfo?.username || '游客';
+
+  if (username !== '游客') {
+    setCurrentUserName(username);
+    setUserNameLoaded(true);
+    if (intervalId) clearInterval(intervalId);
+  } else if (checkCount >= maxChecks) {
+    setCurrentUserName('游客');
+    setUserNameLoaded(true);
+    if (intervalId) clearInterval(intervalId);
+  }
+};
+```
+
+**用户体验提升**
+- 首次加载即可正确显示用户名（无需刷新）
+- 成员列表中显示真实用户名
+- 聊天消息显示正确的发送者名称
+
+### 🔄 房主本地状态同步
+
+**问题背景**
+- WebSocket 服务器不会将事件回传给发送者（sender）
+- 房主发送播放状态更新后，自己的房间信息面板不会更新
+- 导致房主看不到自己正在播放的视频，但成员可以看到
+
+**解决方案**
+- 房主发送 Socket.IO 事件时，同时更新本地状态
+- 在 `updatePlayState`、`changeVideo`、`clearState` 等方法中添加本地更新
+
+**实现代码**
+```typescript
+const updatePlayState = useCallback((state: PlayState) => {
+  if (socket && connected) {
+    socket.emit('play:update', state);
+    // ✅ 本地更新，因为服务器不会回传给发送者
+    setCurrentRoom((prev) => prev ? { ...prev, currentState: state } : null);
+  }
+}, [socket, connected]);
+```
+
+**保持一致性**
+- 房主和成员看到相同的房间状态
+- 房间信息面板实时显示正在播放的内容
+- 所有用户都能通过房间信息快速跳转到当前影片
+
+### 🐛 关键 Bug 修复
+
+**状态更新缺失（Critical）**
+- **问题**：`useWatchRoom.ts` 中的事件监听器只记录日志，从未更新状态
+- **影响**：房间信息面板、房间列表等所有依赖 `currentRoom.currentState` 的功能全部失效
+- **修复**：在所有事件监听器中添加 `setCurrentRoom` 调用
+```typescript
+socket.on('play:update', (state: PlayState) => {
+  console.log('[WatchRoom] Play state updated:', state);
+  setCurrentRoom((prev) => prev ? { ...prev, currentState: state } : null);
+});
+```
+
+**房间列表时间同步逻辑错误**
+- **问题**：用户未加入房间时，点击房间列表的视频卡片也会携带时间参数同步播放进度
+- **影响**：逻辑不合理，用户应该从头开始观看，而非跳转到房主的时间点
+- **修复**：房间列表导航时不携带 `t`（时间）和 `prefer` 参数，仅房间信息面板内的跳转才携带
+
+**类型字段名称错误**
+- **问题**：使用了旧的字段名 `vod_name`、`vod_year` 而非 `SearchResult` 接口的 `title`、`year`
+- **影响**：TypeScript 编译失败
+- **修复**：统一使用正确的字段名称
+
+### 📝 代码改进
+
+**新增文件**
+- `src/components/watch-room/MiniVideoCard.tsx` - 迷你视频卡片组件
+
+**修改文件**
+- `src/types/watch-room.types.ts` - 添加 `totalEpisodes` 字段
+- `src/hooks/useWatchRoom.ts` - 修复事件监听器状态更新，添加房主本地更新
+- `src/app/play/hooks/useWatchRoomSync.ts` - 实现智能导航逻辑，添加 `totalEpisodes` 传递
+- `src/components/WatchRoomProvider.tsx` - 实现用户名持续检测机制
+- `src/components/watch-room/ChatFloatingWindow.tsx` - 使用 MiniVideoCard，添加 `totalEpisodes`
+- `src/app/watch-room/page.tsx` - 使用 MiniVideoCard，修复房间列表逻辑
+- `src/app/play/page.tsx` - 修复字段名称，添加 `setCurrentEpisodeIndex` 参数
+
+**关键技术决策**
+- 使用 `router.push` 而非 `window.location.href` 保持 WebSocket 连接
+- 使用 `setInterval` 而非 `setTimeout` 实现持续检测
+- 在发送端添加本地状态更新以解决服务器不回传问题
+- 根据 `totalEpisodes` 条件渲染集数信息
+
+---
+
 ## 架构说明
 
 观影室功能由两部分组成：
@@ -50,6 +238,9 @@
 ## 服务器源码
 
 观影室服务器开源项目：[watch-room-server](https://github.com/tgs9915/watch-room-server)
+
+**多平台 Docker 镜像**：`ghcr.io/szemeng76/watch-room-server:latest`
+（支持 linux/amd64 和 linux/arm64 架构，可在 x86 和 ARM 设备上原生运行）
 
 ---
 
@@ -161,11 +352,54 @@ Railway 提供简单的部署体验，有一定免费额度。
 
 适合自有服务器或 VPS。
 
-#### 准备工作
+#### 使用预构建镜像（推荐）
 
-确保服务器已安装 Docker 和 Docker Compose。
+使用多平台镜像，无需编译：
 
-#### 部署步骤
+```bash
+# 拉取镜像
+docker pull ghcr.io/szemeng76/watch-room-server:latest
+
+# 运行容器
+docker run -d \
+  --name watch-room-server \
+  --restart unless-stopped \
+  -p 8080:8080 \
+  -e AUTH_KEY=your-secure-random-key-here \
+  -e PORT=8080 \
+  ghcr.io/szemeng76/watch-room-server:latest
+
+# 查看日志
+docker logs -f watch-room-server
+```
+
+或使用 Docker Compose，创建 `docker-compose.yml`：
+
+```yaml
+version: '3.8'
+
+services:
+  watch-room-server:
+    image: ghcr.io/szemeng76/watch-room-server:latest
+    container_name: watch-room-server
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - AUTH_KEY=your-secure-random-key-here
+      - PORT=8080
+```
+
+然后运行：
+
+```bash
+docker-compose up -d
+docker-compose logs -f
+```
+
+#### 从源码构建（可选）
+
+如果需要自定义修改：
 
 1. 克隆服务器代码：
    ```bash
