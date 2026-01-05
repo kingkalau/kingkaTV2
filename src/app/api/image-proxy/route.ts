@@ -18,34 +18,36 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Invalid URL format' }, { status: 400 });
   }
 
-  // 根据图片来源设置正确的 Referer
-  let referer = 'https://movie.douban.com/';
-  if (imageUrl.includes('manmankan.com')) {
-    referer = 'https://g.manmankan.com/';
-  } else if (imageUrl.includes('doubanio.com')) {
-    referer = 'https://movie.douban.com/';
-  }
-
   // 创建 AbortController 用于超时控制
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 15000); // 15秒超时
 
   try {
+    // 动态设置 Referer 和 Origin（根据图片源域名）
+    const imageUrlObj = new URL(imageUrl);
+    const sourceOrigin = `${imageUrlObj.protocol}//${imageUrlObj.host}`;
+
+    // 构建请求头
+    const fetchHeaders: HeadersInit = {
+      'Referer': sourceOrigin + '/',
+      'Origin': sourceOrigin,
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
+      'Accept': 'image/avif,image/webp,image/jxl,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+      'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+      'Accept-Encoding': 'gzip, deflate, br',
+      'Connection': 'keep-alive',
+    };
+
     const imageResponse = await fetch(imageUrl, {
       signal: controller.signal,
-      headers: {
-        Referer: referer,
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-        'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
-        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-      },
+      headers: fetchHeaders,
     });
 
     clearTimeout(timeoutId);
 
     if (!imageResponse.ok) {
-      return NextResponse.json(
+      const errorResponse = NextResponse.json(
         {
           error: 'Failed to fetch image',
           status: imageResponse.status,
@@ -53,6 +55,9 @@ export async function GET(request: Request) {
         },
         { status: imageResponse.status }
       );
+      // 错误响应不缓存，避免缓存失效的图片链接
+      errorResponse.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+      return errorResponse;
     }
 
     const contentType = imageResponse.headers.get('content-type');
@@ -70,10 +75,10 @@ export async function GET(request: Request) {
       headers.set('Content-Type', contentType);
     }
 
-    // 设置缓存头 - 长期缓存（半年）
-    headers.set('Cache-Control', 'public, max-age=15720000, s-maxage=15720000, immutable');
-    headers.set('CDN-Cache-Control', 'public, s-maxage=15720000');
-    headers.set('Vercel-CDN-Cache-Control', 'public, s-maxage=15720000');
+    // 设置缓存头 - 缓存7天（604800秒），允许重新验证
+    headers.set('Cache-Control', 'public, max-age=604800, stale-while-revalidate=86400');
+    headers.set('CDN-Cache-Control', 'public, s-maxage=604800');
+    headers.set('Vercel-CDN-Cache-Control', 'public, s-maxage=604800');
     headers.set('Netlify-Vary', 'query');
 
     // 添加 CORS 支持
