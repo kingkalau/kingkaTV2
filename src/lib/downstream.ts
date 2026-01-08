@@ -4,10 +4,11 @@ import { API_CONFIG, ApiSite, getConfig } from '@/lib/config';
 import { getCachedSearchPage, setCachedSearchPage } from '@/lib/search-cache';
 import { SearchResult } from '@/lib/types';
 import { cleanHtmlTags } from '@/lib/utils';
-import { Converter } from 'opencc-js';
+// 使用轻量级 switch-chinese 库（93.8KB vs opencc-js 5.6MB）
+import stcasc, { ChineseType } from 'switch-chinese';
 
-// 创建模块级别的繁简转换器实例（单例模式，避免重复创建）
-const tw2cnConverter = Converter({ from: 'tw', to: 'cn' });
+// 创建模块级别的繁简转换器实例
+const converter = stcasc();
 
 interface ApiSearchItem {
   vod_id: string;
@@ -142,13 +143,14 @@ async function searchWithCache(
 
 export async function searchFromApi(
   apiSite: ApiSite,
-  query: string
+  query: string,
+  precomputedVariants?: string[] // 新增：预计算的变体
 ): Promise<SearchResult[]> {
   try {
     const apiBaseUrl = apiSite.api;
 
-    // 智能搜索：生成搜索变体（优化：只生成最有用的变体）
-    const searchVariants = generateSearchVariants(query).slice(0, 2); // 最多只用前2个变体
+    // 智能搜索：使用预计算的变体或即时生成（优化：只生成最有用的变体）
+    const searchVariants = precomputedVariants || generateSearchVariants(query).slice(0, 2);
     let results: SearchResult[] = [];
     let pageCountFromFirst = 0;
 
@@ -341,22 +343,14 @@ const M3U8_PATTERN = /(https?:\/\/[^"'\s]+?\.m3u8)/g;
  * @param originalQuery 原始查询
  * @returns 按优先级排序的搜索变体数组
  */
-function generateSearchVariants(originalQuery: string): string[] {
+export function generateSearchVariants(originalQuery: string): string[] {
   const variants: string[] = [];
   const trimmed = originalQuery.trim();
 
   // 1. 原始查询（最高优先级）
   variants.push(trimmed);
 
-  // 2. 繁体转简体变体（用于搜索简体数据源）
-  // 使用模块级别的 converter 单例，避免每次创建新实例
-  const simplifiedVariant = tw2cnConverter(trimmed);
-  if (simplifiedVariant !== trimmed && !variants.includes(simplifiedVariant)) {
-    variants.push(simplifiedVariant);
-    console.log(`[DEBUG] 添加繁转简变体: "${trimmed}" -> "${simplifiedVariant}"`);
-  }
-
-  // 3. 处理中文标点符号变体
+  // 2. 处理中文标点符号变体
   const chinesePunctuationVariants = generateChinesePunctuationVariants(trimmed);
   chinesePunctuationVariants.forEach(variant => {
     if (!variants.includes(variant)) {
@@ -423,8 +417,31 @@ function generateSearchVariants(originalQuery: string): string[] {
     }
   }
 
-  // 去重并返回
-  return Array.from(new Set(variants));
+  // 去重
+  const uniqueVariants = Array.from(new Set(variants));
+
+  // 最后：只对前几个优先级高的变体进行繁体转简体处理
+  // 优化：使用 detect() 先检测，避免对简体输入进行无用转换（detect比simplized快1.5-3倍）
+  const finalVariants: string[] = [];
+  const MAX_VARIANTS_TO_CONVERT = 3; // 只转换前3个变体
+
+  uniqueVariants.forEach((variant, index) => {
+    finalVariants.push(variant);
+    // 只对前几个变体进行繁转简
+    if (index < MAX_VARIANTS_TO_CONVERT) {
+      // 优化：先用 detect() 检测，简体直接跳过（快1.5-3倍）
+      const type = converter.detect(variant);
+      if (type !== ChineseType.SIMPLIFIED) {
+        const simplifiedVariant = converter.simplized(variant);
+        if (simplifiedVariant !== variant && !finalVariants.includes(simplifiedVariant)) {
+          finalVariants.push(simplifiedVariant);
+          console.log(`[DEBUG] 添加繁转简变体: "${variant}" -> "${simplifiedVariant}"`);
+        }
+      }
+    }
+  });
+
+  return finalVariants;
 }
 
 /**
