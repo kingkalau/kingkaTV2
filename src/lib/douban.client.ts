@@ -177,13 +177,13 @@ export function clearDoubanCache(): void {
 // 初始化缓存系统（应该在应用启动时调用）
 export async function initDoubanCache(): Promise<void> {
   if (typeof window === 'undefined') return;
-  
+
   // 立即清理一次过期缓存
   await cleanExpiredCache();
-  
-  // 每10分钟清理一次过期缓存
-  setInterval(() => cleanExpiredCache(), 10 * 60 * 1000);
-  
+
+  // 每1小时清理一次过期缓存
+  setInterval(() => cleanExpiredCache(), 60 * 60 * 1000);
+
   console.log('缓存系统已初始化（豆瓣+Bangumi）');
 }
 
@@ -684,11 +684,13 @@ export async function getDoubanDetails(id: string): Promise<{
 
     const result = await response.json();
 
-    // 保存到缓存（调试模式下不缓存）
-    if (result.code === 200 && !isDebugMode) {
+    // 🎯 只缓存有效数据（必须有 title）
+    if (result.code === 200 && result.data?.title && !isDebugMode) {
       const cacheKey = getCacheKey('details', { id });
       await setCache(cacheKey, result, DOUBAN_CACHE_EXPIRE.details);
       console.log(`豆瓣详情已缓存: ${id}`);
+    } else if (result.code === 200 && !result.data?.title) {
+      console.warn(`⚠️ 豆瓣详情数据无效（缺少标题），不缓存: ${id}`);
     }
 
     return result;
