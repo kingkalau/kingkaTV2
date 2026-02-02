@@ -36,13 +36,14 @@ import {
   FileText,
   FolderOpen,
   Settings,
+  Shield,
   TestTube,
   Tv,
   Upload,
   Users,
   Video,
 } from 'lucide-react';
-import { GripVertical, KeyRound } from 'lucide-react';
+import { GripVertical, KeyRound, MessageSquare } from 'lucide-react';
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 
@@ -57,6 +58,8 @@ import SourceTestModule from '@/components/SourceTestModule';
 import { TelegramAuthConfig } from '@/components/TelegramAuthConfig';
 import { OIDCAuthConfig } from '@/components/OIDCAuthConfig';
 import TVBoxSecurityConfig from '@/components/TVBoxSecurityConfig';
+import TrustedNetworkConfig from '@/components/TrustedNetworkConfig';
+import DanmuApiConfig from '@/components/DanmuApiConfig';
 import { TVBoxTokenCell, TVBoxTokenModal } from '@/components/TVBoxTokenManager';
 import YouTubeConfig from '@/components/YouTubeConfig';
 import ShortDramaConfig from '@/components/ShortDramaConfig';
@@ -314,6 +317,7 @@ interface DataSource {
   from: 'config' | 'custom';
   is_adult?: boolean;
   type?: 'vod' | 'shortdrama'; // 视频源类型：vod=普通视频，shortdrama=短剧
+  weight?: number; // 优先级权重：0-100，数字越大优先级越高，默认50
 }
 
 // 直播源数据类型
@@ -2907,6 +2911,18 @@ const VideoSourceConfig = ({
     });
   };
 
+  // 更新源权重
+  const handleUpdateWeight = (key: string, weight: number) => {
+    // 限制权重范围 0-100
+    const validWeight = Math.max(0, Math.min(100, weight));
+    // 立即更新本地状态
+    setSources(prev => prev.map(s => s.key === key ? { ...s, weight: validWeight } : s));
+    // 异步保存到后端
+    withLoading(`updateWeight_${key}`, () => callSourceApi({ action: 'update_weight', key, weight: validWeight })).catch(() => {
+      console.error('操作失败', 'update_weight', key);
+    });
+  };
+
   // 保存普通视频源代理配置
   const handleSaveVideoProxy = async () => {
     try {
@@ -3357,6 +3373,17 @@ const VideoSourceConfig = ({
               普通源
             </span>
           )}
+        </td>
+        <td className='px-6 py-4 whitespace-nowrap text-center'>
+          <input
+            type='number'
+            min='0'
+            max='100'
+            value={source.weight ?? 50}
+            onChange={(e) => handleUpdateWeight(source.key, parseInt(e.target.value) || 0)}
+            className='w-16 px-2 py-1 text-center text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
+            title='权重越高，播放时越优先选择该源（0-100）'
+          />
         </td>
         <td className='px-6 py-4 whitespace-nowrap max-w-[1rem]'>
           {(() => {
@@ -4238,6 +4265,9 @@ const VideoSourceConfig = ({
               </th>
               <th className='px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider'>
                 源类型
+              </th>
+              <th className='px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider'>
+                权重
               </th>
               <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider'>
                 有效性
@@ -6851,6 +6881,8 @@ function AdminPageClient() {
     customAdFilter: false,
     watchRoomConfig: false,
     tvboxSecurityConfig: false,
+    trustedNetworkConfig: false,
+    danmuApiConfig: false,
     telegramAuthConfig: false,
     oidcAuthConfig: false,
     configFile: false,
@@ -6955,7 +6987,7 @@ function AdminPageClient() {
   return (
     <PageLayout activePath='/admin'>
       <div className='-mt-6 md:mt-0'>
-        <div className='max-w-[95%] mx-auto pb-32 md:pb-safe-bottom'>
+        <div className='max-w-[95%] mx-auto pb-40 md:pb-safe-bottom'>
           {/* 标题 + 重置配置按钮 */}
           <div className='flex items-center gap-2 mb-8'>
             <h1 className='text-2xl font-bold text-gray-900 dark:text-gray-100'>
@@ -7191,6 +7223,40 @@ function AdminPageClient() {
             >
               <TVBoxSecurityConfig config={config} refreshConfig={fetchConfig} />
             </CollapsibleTab>
+
+            {/* 信任网络配置 - 仅站长可见 */}
+            {role === 'owner' && (
+              <CollapsibleTab
+                title='信任网络配置'
+                icon={
+                  <Shield
+                    size={20}
+                    className='text-green-600 dark:text-green-400'
+                  />
+                }
+                isExpanded={expandedTabs.trustedNetworkConfig}
+                onToggle={() => toggleTab('trustedNetworkConfig')}
+              >
+                <TrustedNetworkConfig config={config} refreshConfig={fetchConfig} />
+              </CollapsibleTab>
+            )}
+
+            {/* 弹幕API配置 - 仅站长可见 */}
+            {role === 'owner' && (
+              <CollapsibleTab
+                title='弹幕API配置'
+                icon={
+                  <MessageSquare
+                    size={20}
+                    className='text-purple-600 dark:text-purple-400'
+                  />
+                }
+                isExpanded={expandedTabs.danmuApiConfig}
+                onToggle={() => toggleTab('danmuApiConfig')}
+              >
+                <DanmuApiConfig config={config} refreshConfig={fetchConfig} />
+              </CollapsibleTab>
+            )}
 
             {/* Telegram 登录配置 - 仅站长可见 */}
             {role === 'owner' && (
